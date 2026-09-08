@@ -25,7 +25,7 @@ void SetUIWorkletRuntime(
     gUiRuntime.reset();
     return;
   }
-  runtime->schedule([runtime]() { gUiRuntime = runtime; });
+  runtime->schedule([runtime](jsi::Runtime &) { gUiRuntime = runtime; });
 }
 
 std::optional<jsi::WeakObject> LookupTransformer(int transformerId) {
