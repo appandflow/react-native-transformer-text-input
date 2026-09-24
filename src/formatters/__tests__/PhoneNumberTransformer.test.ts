@@ -369,6 +369,45 @@ describe('PhoneNumberTransformer', () => {
     });
   });
 
+  // NANP data lists Canada's 7-digit "310-XXXX" service-number format ahead of
+  // the 10-digit format, so selecting a format by leading digits alone clamped
+  // every +1 310 number to seven digits.
+  describe('formats sharing a leading-digits prefix (NANP 310)', () => {
+    const intl = new PhoneNumberTransformer({ international: true });
+
+    it('formats a full 10-digit 310 number in international mode', () => {
+      expect(transform(intl, '+13102705123')?.value).toBe('+1 (310) 270-5123');
+    });
+
+    it('formats a full 10-digit 310 number in national mode', () => {
+      const us = new PhoneNumberTransformer({ country: 'US' });
+      expect(transform(us, '3102705123')?.value).toBe('+1 (310) 270-5123');
+    });
+
+    it('still formats a 7-digit 310 service number', () => {
+      const ca = new PhoneNumberTransformer({ country: 'CA' });
+      expect(transform(ca, '3102705')?.value).toBe('+1 310-2705');
+      expect(transform(intl, '+13102705')?.value).toBe('+1 310-2705');
+    });
+
+    it('switches from the 7-digit to the 10-digit format on the eighth digit', () => {
+      expect(transform(intl, '+13102705')?.value).toBe('+1 310-2705');
+      const result = transform(
+        intl,
+        '+1 310-27051',
+        { start: 12, end: 12 },
+        '+1 310-2705',
+        { start: 11, end: 11 },
+      );
+      expect(result?.value).toBe('+1 (310) 270-51');
+      expect(result?.selection).toEqual({ start: 15, end: 15 });
+    });
+
+    it('still limits a 310 number to 10 national digits', () => {
+      expect(transform(intl, '+131027051234')?.value).toBe('+1 (310) 270-5123');
+    });
+  });
+
   describe('detectCountry', () => {
     it('resolves the primary country from the calling code', () => {
       expect(detectCountry('+1 415 555 2671')).toBe('US');
