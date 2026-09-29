@@ -1,5 +1,6 @@
 name: CI
 on:
+  workflow_call:
   push:
     branches:
       - main
@@ -54,8 +55,15 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
-      - name: Build package
-        run: yarn prepare
+      - name: Test release safeguards
+        run: node --test scripts/test-release.mjs
+
+      - name: Build and inspect npm package
+        run: |
+          yarn prepare
+          mkdir artifacts
+          npm pack --ignore-scripts --pack-destination artifacts
+          node scripts/check-package.mjs artifacts/*.tgz
 
   build-android:
     runs-on: ubuntu-latest
