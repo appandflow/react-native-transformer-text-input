@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    outputs:
+      filename: ${{ steps.pack.outputs.filename }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Validate candidate before native CI
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          node scripts/check-release.mjs "$GITHUB_REF_NAME"
+      - name: Test release safeguards
+        run: node --test scripts/test-release.mjs
+      - name: Build package
+        run: yarn prepare
+      - name: Pack and inspect
+        id: pack
+        run: |
+          mkdir artifacts
+          npm pack --ignore-scripts --pack-destination artifacts
+          filename=$(node -e 'const fs=require("node:fs"); const files=fs.readdirSync("artifacts").filter(f=>f.endsWith(".tgz")); if(files.length!==1) throw new Error("Expected exactly one tarball"); console.log(files[0])')
+          node scripts/check-package.mjs "./artifacts/$filename"
+          echo "filename=$filename" >> "$GITHUB_OUTPUT"
+      - name: Preserve verified package
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  verify:
+    needs: package
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: [package, verify]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Use Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Download verified package
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts
+      - name: Publish and verify with npm trusted publishing
+        env:
+          PACKAGE_FILENAME: ${{ needs.package.outputs.filename }}
+        run: |
+          node --version
+          npm --version
+          node scripts/publish-package.mjs "./artifacts/$PACKAGE_FILENAME" "${GITHUB_REF_NAME#v}"

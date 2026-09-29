@@ -80,7 +80,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AppAndFlow/react-native-transformer-text-input.git"
+    "url": "git+https://github.com/appandflow/react-native-transformer-text-input.git"
   },
   "author": "Janic Duplessis <janic@appandflow.com> (https://appandflow.com)",
   "license": "MIT",
@@ -190,7 +190,7 @@
       "tagName": "v${version}"
     },
     "npm": {
-      "publish": true
+      "publish": false
     },
     "github": {
       "release": true
