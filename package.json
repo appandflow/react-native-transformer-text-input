@@ -1,6 +1,6 @@
 {
   "name": "react-native-transformer-text-input",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "TextInput component that allows transforming text synchronously with a worklet",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
