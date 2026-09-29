@@ -71,6 +71,24 @@ describe('TransformerTextInput', () => {
     expect(onChangeText).toHaveBeenCalledWith('hello');
   });
 
+  it('initializes ref value from the transformed default value', () => {
+    const transformer = new Transformer(({ value }) => {
+      'worklet';
+      return { value: value.toUpperCase() };
+    });
+    const ref = React.createRef<TransformerTextInputInstance>();
+
+    render(
+      <TransformerTextInput
+        ref={ref}
+        transformer={transformer}
+        defaultValue="hello"
+      />,
+    );
+
+    expect(ref.current?.getValue()).toBe('HELLO');
+  });
+
   it('registers and unregisters transformers via registry', () => {
     const transformer = new Transformer(({ value }) => {
       'worklet';

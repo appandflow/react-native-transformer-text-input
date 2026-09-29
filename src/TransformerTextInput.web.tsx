@@ -35,6 +35,7 @@ export const TransformerTextInput = forwardRef(
     {
       transformer,
       onChangeText,
+      onSelectionChange,
       defaultValue,
       ...others
     }: TransformerTextInputProps,
@@ -124,6 +125,24 @@ export const TransformerTextInput = forwardRef(
       [applyTransform, onChangeText],
     );
 
+    const handleSelectionChange = useCallback(
+      (
+        event: Parameters<
+          NonNullable<TransformerTextInputProps['onSelectionChange']>
+        >[0],
+      ) => {
+        const node = nodeRef.current;
+        if (node == null || node.value === valueRef.current) {
+          previousRef.current = {
+            value: valueRef.current,
+            selection: event.nativeEvent.selection,
+          };
+        }
+        onSelectionChange?.(event);
+      },
+      [onSelectionChange],
+    );
+
     const setInputRef = useCallback(
       (instance: TransformerTextInputInstance | null) => {
         nodeRef.current = instance as unknown as WebInputNode | null;
@@ -154,6 +173,7 @@ export const TransformerTextInput = forwardRef(
         ref={inputRef}
         defaultValue={transformedDefaultValue}
         onChangeText={handleChangeText}
+        onSelectionChange={handleSelectionChange}
         {...others}
       />
     );

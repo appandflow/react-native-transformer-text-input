@@ -28,6 +28,7 @@ struct RNTTITextState {
   bool _observersAdded;
   __weak id<RCTBackedTextInputDelegate> _baseDelegate;
   __weak UIView<RCTBackedTextInputViewProtocol> *_backedTextInput;
+  NSString *_lastKnownValue;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider
@@ -58,11 +59,14 @@ struct RNTTITextState {
   [super updateProps:props oldProps:oldProps];
 
   // When the transformer is swapped after mount, re-run it on the current
-  // text so the displayed value reformats immediately. The initial prop set
-  // is excluded by checking that the previous id was non-zero (default) and
-  // that the backing text input is attached.
-  if (transformerIdChanged && oldViewProps.transformerId != 0 && _backedTextInput != nil) {
-    [self reapplyTransformer];
+  // text so the displayed value reformats immediately. On the initial prop
+  // set, seed the transformer's previous value and selection instead.
+  if (transformerIdChanged && _backedTextInput != nil) {
+    if (oldViewProps.transformerId != 0) {
+      [self reapplyTransformer];
+    } else {
+      [self syncTransformerHistory];
+    }
   }
 }
 
@@ -80,9 +84,22 @@ struct RNTTITextState {
     [self applyValue:next.value];
   }
   [self applySelection:next.selection];
+  _lastKnownValue = next.value;
   if (didTransformValue) {
     [_baseDelegate textInputDidChange];
   }
+}
+
+- (void)syncTransformerHistory
+{
+  if (!_backedTextInput || !_transformer) {
+    return;
+  }
+  NSString *currentValue = [self currentValue];
+  NSRange currentSelection = [self currentSelection];
+  RNTTITextState current{currentValue, currentSelection};
+  [self transformTextState:current transform:NO];
+  _lastKnownValue = currentValue;
 }
 
 - (void)applyValue:(NSString *)newValue
@@ -186,6 +203,7 @@ struct RNTTITextState {
   backedTextInputView.textInputDelegate = self;
 
   _observersAdded = true;
+  [self syncTransformerHistory];
 }
 
 - (void)removeTextInputObservers
@@ -197,6 +215,7 @@ struct RNTTITextState {
   _baseDelegate = nil;
   _observersAdded = false;
   _transformer = std::nullopt;
+  _lastKnownValue = nil;
 }
 
 - (void)textInputDidBeginEditing
@@ -218,12 +237,20 @@ struct RNTTITextState {
   if (didTransformValue || !NSEqualRanges(next.selection, current.selection)) {
     [self applySelection:next.selection];
   }
+  _lastKnownValue = next.value;
 
   [_baseDelegate textInputDidChange];
 }
 
 - (void)textInputDidChangeSelection
 {
+  NSString *currentValue = [self currentValue];
+  // Selection callbacks can arrive before text-change callbacks for an edit.
+  // Only sync when the text itself is unchanged so the edit still receives
+  // the state from before the user typed.
+  if (_lastKnownValue == nil || [currentValue isEqualToString:_lastKnownValue]) {
+    [self syncTransformerHistory];
+  }
   [_baseDelegate textInputDidChangeSelection];
 }
 
@@ -289,6 +316,7 @@ struct RNTTITextState {
   if (didTransformValue || !NSEqualRanges(next.selection, currentSelection)) {
     [self applySelection:next.selection];
   }
+  _lastKnownValue = next.value;
 
   [_baseDelegate textInputDidChange];
 }

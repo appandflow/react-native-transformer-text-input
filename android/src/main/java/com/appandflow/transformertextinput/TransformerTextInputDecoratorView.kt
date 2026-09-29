@@ -2,6 +2,10 @@ package com.appandflow.transformertextinput
 
 import android.content.Context
 import android.text.Editable
+import android.text.Selection
+import android.text.SpanWatcher
+import android.text.Spannable
+import android.text.Spanned
 import android.text.TextWatcher
 import com.facebook.react.views.textinput.ReactEditText
 import com.facebook.react.views.view.ReactViewGroup
@@ -19,6 +23,47 @@ class TransformerTextInputDecoratorView(
   private var resetLastEventValueJob: Job? = null
   private var reactEditText: ReactEditText? = null
   private var isUpdating = false
+  private var selectionSyncPosted = false
+
+  // ReactEditText does not expose a listener for selection-only changes. Its
+  // selection is represented by spans, so observe those markers directly.
+  private val selectionWatcher =
+    object : SpanWatcher {
+      override fun onSpanAdded(
+        text: Spannable?,
+        what: Any?,
+        start: Int,
+        end: Int,
+      ) {
+        if (isSelectionMarker(what)) {
+          scheduleSelectionHistorySync()
+        }
+      }
+
+      override fun onSpanRemoved(
+        text: Spannable?,
+        what: Any?,
+        start: Int,
+        end: Int,
+      ) {
+        if (isSelectionMarker(what)) {
+          scheduleSelectionHistorySync()
+        }
+      }
+
+      override fun onSpanChanged(
+        text: Spannable?,
+        what: Any?,
+        oldStart: Int,
+        oldEnd: Int,
+        newStart: Int,
+        newEnd: Int,
+      ) {
+        if (isSelectionMarker(what)) {
+          scheduleSelectionHistorySync()
+        }
+      }
+    }
 
   private fun currentValue(): String = reactEditText?.text?.toString() ?: ""
 
@@ -50,19 +95,55 @@ class TransformerTextInputDecoratorView(
     transform,
   ) ?: state
 
+  private fun isSelectionMarker(span: Any?): Boolean = span === Selection.SELECTION_START || span === Selection.SELECTION_END
+
+  private fun attachSelectionWatcher(editable: Editable?) {
+    if (editable == null || editable.getSpanStart(selectionWatcher) >= 0) {
+      return
+    }
+    editable.setSpan(
+      selectionWatcher,
+      0,
+      editable.length,
+      Spanned.SPAN_INCLUSIVE_INCLUSIVE,
+    )
+  }
+
+  private fun scheduleSelectionHistorySync() {
+    if (selectionSyncPosted) {
+      return
+    }
+    selectionSyncPosted = true
+    reactEditText?.post {
+      selectionSyncPosted = false
+      if (!isUpdating) {
+        syncTransformerHistory()
+      }
+    }
+  }
+
+  private fun syncTransformerHistory() {
+    if (reactEditText == null || transformerId == 0) {
+      return
+    }
+    val current = TextState(currentValue(), currentSelection())
+    transformTextState(current, false)
+  }
+
   fun setTransformerId(newTransformerId: Int) {
     val previousTransformerId = transformerId
     transformerId = newTransformerId
     lastEventValue = null
     // When the transformer is swapped after mount, re-run it on the current
-    // text so the displayed value reformats immediately. The initial prop
-    // set is excluded by checking that the previous id was non-zero
-    // (default) and that the backing edit text is attached.
+    // text so the displayed value reformats immediately. On the initial prop
+    // set, seed the transformer's previous value and selection instead.
     if (previousTransformerId != 0 &&
       previousTransformerId != newTransformerId &&
       reactEditText != null
     ) {
       reapplyTransformer()
+    } else if (previousTransformerId == 0 && reactEditText != null) {
+      scheduleSelectionHistorySync()
     }
   }
 
@@ -91,13 +172,17 @@ class TransformerTextInputDecoratorView(
     val child = getChildAt(0)
     if (child is ReactEditText) {
       reactEditText = child
-      reactEditText?.addTextChangedListener(this)
+      child.addTextChangedListener(this)
+      attachSelectionWatcher(child.text)
+      child.post { syncTransformerHistory() }
     }
   }
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
+    reactEditText?.text?.removeSpan(selectionWatcher)
     reactEditText?.removeTextChangedListener(this)
+    selectionSyncPosted = false
     reactEditText = null
   }
 
@@ -120,6 +205,7 @@ class TransformerTextInputDecoratorView(
   }
 
   override fun afterTextChanged(s: Editable?) {
+    attachSelectionWatcher(s)
     if (isUpdating) {
       return
     }

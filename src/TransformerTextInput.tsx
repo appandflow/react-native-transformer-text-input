@@ -66,7 +66,7 @@ export const TransformerTextInput = forwardRef(
       useRef<
         ElementRef<typeof TransformerTextInputDecoratorViewNativeComponent>
       >(null);
-    const textRef = useRef('');
+    const textRef = useRef(transformedDefaultValue ?? '');
 
     const setInputRef = useCallback((instance: HostInstance | null) => {
       if (instance != null) {
